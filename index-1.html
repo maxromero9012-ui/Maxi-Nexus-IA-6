@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Maxi IA">
+<meta name="theme-color" content="#121212">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon.png">
+<title>Maxi IA</title>
+
+<!-- Manifest inline como blob -->
+<script>
+const manifestData = {
+  name: "Maxi IA",
+  short_name: "Maxi",
+  description: "Tu asistente IA personal",
+  start_url: "./",
+  display: "standalone",
+  orientation: "any",
+  background_color: "#121212",
+  theme_color: "#121212",
+  icons: [
+    { src: generateIcon(), sizes: "192x192", type: "image/png", purpose: "any maskable" },
+    { src: generateIcon(), sizes: "512x512", type: "image/png", purpose: "any maskable" }
+  ]
+};
+
+function generateIcon() {
+  const c = document.createElement('canvas');
+  c.width = 512; c.height = 512;
+  const ctx = c.getContext('2d');
+  // Fondo degradado Claude+Gemini
+  const g = ctx.createLinearGradient(0,0,512,512);
+  g.addColorStop(0, '#4A90D9');
+  g.addColorStop(0.5, '#8B5CF6');
+  g.addColorStop(1, '#06B6D4');
+  ctx.fillStyle = g;
+  // Forma redondeada
+  const r = 100;
+  ctx.beginPath();
+  ctx.moveTo(r,0); ctx.lineTo(512-r,0);
+  ctx.quadraticCurveTo(512,0,512,r);
+  ctx.lineTo(512,512-r);
+  ctx.quadraticCurveTo(512,512,512-r,512);
+  ctx.lineTo(r,512); ctx.quadraticCurveTo(0,512,0,512-r);
+  ctx.lineTo(0,r); ctx.quadraticCurveTo(0,0,r,0);
+  ctx.fill();
+  // Letra M estilizada
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 280px Segoe UI';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('M', 256, 270);
+  // Estrella brillante arriba derecha
+  ctx.fillStyle = '#ffffff99';
+  ctx.font = '80px serif';
+  ctx.fillText('✦', 390, 130);
+  return c.toDataURL('image/png');
+}
+
+// Registrar manifest dinámico
+window.addEventListener('DOMContentLoaded', () => {
+  manifestData.icons[0].src = generateIcon();
+  manifestData.icons[1].src = generateIcon();
+  const blob = new Blob([JSON.stringify(manifestData)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('link');
+  link.rel = 'manifest'; link.href = url;
+  document.head.appendChild(link);
+
+  // Ícono para iOS
+  const iconLink = document.createElement('link');
+  iconLink.rel = 'apple-touch-icon';
+  iconLink.href = generateIcon();
+  document.head.appendChild(iconLink);
+});
+
+// Service Worker inline
+if ('serviceWorker' in navigator) {
+  const swCode = `
+    const CACHE = 'maxi-v1';
+    self.addEventListener('install', e => {
+      self.skipWaiting();
+    });
+    self.addEventListener('activate', e => {
+      e.waitUntil(clients.claim());
+    });
+    self.addEventListener('fetch', e => {
+      e.respondWith(fetch(e.request).catch(() => caches.match(e.request)));
+    });
+  `;
+  const swBlob = new Blob([swCode], {type:'application/javascript'});
+  const swUrl = URL.createObjectURL(swBlob);
+  navigator.serviceWorker.register(swUrl).catch(()=>{});
+}
+</script>
+<style>
+* { box-sizing:border-box; margin:0; padding:0; font-family:'Segoe UI',sans-serif; }
+body { background:#121212; color:#ececec; display:flex; height:100vh; overflow:hidden; }
+
+/* ── SIDEBAR ── */
+#sidebar {
+  width:260px; background:#1a1a1a; border-right:1px solid #2a2a2a;
+  display:flex; flex-direction:column; padding:14px; gap:10px;
+  transition:transform 0.25s;
+}
+#sidebar.hidden { transform:translateX(-260px); position:absolute; height:100%; z-index:50; }
+
+.btn-nuevo {
+  background:#4dadf7; color:#000; border:none; padding:12px;
+  border-radius:8px; font-weight:bold; font-size:14px; cursor:pointer;
+}
+.btn-nuevo:active { background:#2e8fd4; }
+
+#lista-chats { flex:1; overflow-y:auto; display:flex; flex-direction:column; gap:6px; }
+
+.item-chat {
+  padding:11px 12px; background:#252525; border-radius:8px; cursor:pointer;
+  font-size:13px; color:#ccc; border-left:3px solid transparent;
+  display:flex; align-items:center; justify-content:space-between; gap:6px;
+  user-select:none;
+}
+.item-chat.activo { background:#2d2d2d; border-left-color:#4dadf7; color:#fff; }
+.item-chat:active { background:#333; }
+.chat-title { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.chat-actions { display:flex; gap:4px; opacity:0; pointer-events:none; transition:0.2s; }
+.item-chat:hover .chat-actions,
+.item-chat.activo .chat-actions { opacity:1; pointer-events:all; }
+.chat-actions button {
+  background:none; border:none; cursor:pointer; font-size:13px; padding:2px 4px;
+  border-radius:4px; color:#aaa;
+}
+.chat-actions button:hover { background:#444; color:#fff; }
+
+.btn-borrar-todo {
+  background:#1e1e1e; color:#ff6666; border:1px solid #333;
+  padding:11px; border-radius:8px; font-size:13px; cursor:pointer;
+}
+.btn-borrar-todo:active { background:#2a0000; }
+
+/* ── MAIN ── */
+#main { flex:1; display:flex; flex-direction:column; min-width:0; overflow:hidden; }
+
+header {
+  background:#1a1a1a; padding:14px 16px; border-bottom:1px solid #2a2a2a;
+  display:flex; align-items:center; gap:10px; flex-shrink:0;
+}
+#btn-toggle {
+  background:none; border:none; color:#aaa; font-size:20px; cursor:pointer; display:none;
+}
+header h1 { font-size:17px; color:#4dadf7; flex:1; text-align:center; }
+
+#chat-box {
+  flex:1; padding:20px; overflow-y:auto;
+  display:flex; flex-direction:column; gap:16px;
+  min-height:0; padding-bottom:80px;
+}
+
+.msg { max-width:80%; padding:13px 16px; border-radius:14px; line-height:1.65; font-size:14.5px; word-break:break-word; }
+.msg.user { background:#4dadf7; color:#000; align-self:flex-end; border-bottom-right-radius:3px; font-weight:500; }
+.msg.ai { background:#1e1e1e; color:#e0e0e0; align-self:flex-start; border:1px solid #2a2a2a; border-bottom-left-radius:3px; }
+.msg.ai pre { background:#0d0d0d; padding:12px; border-radius:8px; border-left:3px solid #4dadf7; overflow-x:auto; margin:8px 0; }
+.msg.ai code { font-family:'Consolas',monospace; font-size:13px; color:#a9b7c6; }
+.msg.ai p { margin-bottom:6px; }
+.msg.ai strong { color:#4dadf7; }
+
+.typing { display:flex; gap:5px; padding:14px 18px; }
+.dot { width:8px; height:8px; background:#4dadf7; border-radius:50%; animation:bounce 1s infinite; }
+.dot:nth-child(2) { animation-delay:0.2s; }
+.dot:nth-child(3) { animation-delay:0.4s; }
+@keyframes bounce { 0%,60%,100%{transform:translateY(0)} 30%{transform:translateY(-8px)} }
+
+/* ── INPUT ── */
+.input-area {
+  position:fixed; bottom:0; left:280px; right:0;
+  padding:10px 14px; background:#1a1a1a; border-top:1px solid #2a2a2a;
+  z-index:40;
+}
+@media (max-width:600px) {
+  .input-area { left:0; }
+}
+.input-box {
+  display:flex; gap:8px; background:#2a2a2a;
+  padding:8px 14px; border-radius:30px; align-items:center;
+  border:1px solid #444;
+}
+textarea {
+  flex:1; background:transparent; border:none; color:#fff;
+  font-size:15px; outline:none; resize:none; max-height:100px;
+  line-height:1.5; padding:6px 0; font-family:'Segoe UI',sans-serif;
+}
+.btn-enviar {
+  background:#4dadf7; border:none; min-width:42px; height:42px;
+  border-radius:50%; cursor:pointer; color:#000; font-size:20px;
+  display:flex; align-items:center; justify-content:center; flex-shrink:0;
+}
+.btn-enviar:active { background:#2e8fd4; transform:scale(0.95); }
+.btn-enviar:disabled { background:#333; color:#666; cursor:not-allowed; }
+
+/* ── MODAL RENOMBRAR ── */
+#modal-wrap {
+  position:fixed; inset:0; background:#000000bb;
+  display:none; align-items:center; justify-content:center; z-index:100;
+}
+#modal-wrap.show { display:flex; }
+#modal {
+  background:#1e1e1e; border:1px solid #333; border-radius:12px;
+  padding:24px; width:300px; display:flex; flex-direction:column; gap:12px;
+}
+#modal h3 { color:#4dadf7; font-size:15px; }
+#modal input {
+  background:#2a2a2a; border:1px solid #444; color:#fff;
+  padding:10px 14px; border-radius:8px; font-size:14px; outline:none;
+}
+.modal-btns { display:flex; gap:8px; justify-content:flex-end; }
+.modal-btns button {
+  padding:8px 18px; border-radius:8px; border:none; cursor:pointer; font-size:13px;
+}
+#modal-cancel { background:#333; color:#aaa; }
+#modal-ok { background:#4dadf7; color:#000; font-weight:bold; }
+
+/* ── RESPONSIVE MÓVIL ── */
+@media (max-width: 600px) {
+  #sidebar { position:absolute; height:100%; z-index:50; transform:translateX(-260px); }
+  #sidebar.open { transform:translateX(0); }
+  #btn-toggle { display:block; }
+  .chat-actions { opacity:1; pointer-events:all; }
+}
+</style>
+</head>
+<body>
+
+<!-- SPLASH SCREEN -->
+<div id="splash" style="
+  position:fixed;inset:0;z-index:999;
+  background:linear-gradient(135deg,#0f0c29,#302b63,#24243e);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  transition:opacity 0.5s;
+">
+  <canvas id="splash-icon" width="120" height="120" style="border-radius:24px;margin-bottom:20px;box-shadow:0 0 40px #8B5CF688;"></canvas>
+  <div style="color:#fff;font-size:28px;font-weight:bold;letter-spacing:4px;">MAXI IA</div>
+  <div style="color:#8B5CF6;font-size:13px;margin-top:6px;letter-spacing:2px;">Tu asistente personal</div>
+  <div style="margin-top:30px;display:flex;gap:6px;">
+    <div style="width:8px;height:8px;border-radius:50%;background:#4A90D9;animation:pulse 1s infinite;"></div>
+    <div style="width:8px;height:8px;border-radius:50%;background:#8B5CF6;animation:pulse 1s 0.2s infinite;"></div>
+    <div style="width:8px;height:8px;border-radius:50%;background:#06B6D4;animation:pulse 1s 0.4s infinite;"></div>
+  </div>
+  <style>
+    @keyframes pulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.4);opacity:0.5}}
+  </style>
+</div>
+
+<script>
+// Dibujar ícono en splash
+window.addEventListener('DOMContentLoaded', () => {
+  const c = document.getElementById('splash-icon');
+  const ctx = c.getContext('2d');
+  const g = ctx.createLinearGradient(0,0,120,120);
+  g.addColorStop(0,'#4A90D9'); g.addColorStop(0.5,'#8B5CF6'); g.addColorStop(1,'#06B6D4');
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.roundRect(0,0,120,120,22);
+  ctx.fill();
+  ctx.fillStyle='#fff';
+  ctx.font='bold 68px Segoe UI';
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText('M',60,65);
+  ctx.font='18px serif'; ctx.fillStyle='#ffffff99';
+  ctx.fillText('✦',95,28);
+  // Ocultar splash después de 1.8s
+  setTimeout(()=>{
+    const s=document.getElementById('splash');
+    s.style.opacity='0';
+    setTimeout(()=>s.remove(),500);
+  },1800);
+});
+</script>
+
+<div id="sidebar">
+  <button class="btn-nuevo" onclick="nuevoChat()">＋ Nuevo Chat</button>
+  <button id="btn-instalar" onclick="instalarApp()" style="
+    display:none;background:linear-gradient(135deg,#4A90D9,#8B5CF6);
+    color:#fff;border:none;padding:11px;border-radius:8px;
+    font-size:13px;cursor:pointer;font-weight:bold;letter-spacing:1px;
+  ">📲 Instalar App</button>
+  <div id="lista-chats"></div>
+  <button class="btn-borrar-todo" onclick="borrarTodo()">🗑 Borrar todo</button>
+</div>
+
+<div id="main">
+  <header>
+    <button id="btn-toggle" onclick="toggleSidebar()">☰</button>
+    <h1>✦ Maxi IA</h1>
+  </header>
+  <div id="chat-box"></div>
+</div>
+
+<div class="input-area">
+  <div class="input-box">
+    <textarea id="userInput" rows="1" placeholder="Escribe un mensaje..." onkeydown="teclaEnter(event)" oninput="autoResize(this)"></textarea>
+    <button class="btn-enviar" id="btn-enviar" onclick="enviar()">➤</button>
+  </div>
+</div>
+
+<!-- Modal renombrar -->
+<div id="modal-wrap">
+  <div id="modal">
+    <h3>Renombrar conversación</h3>
+    <input type="text" id="modal-input" placeholder="Nuevo nombre...">
+    <div class="modal-btns">
+      <button id="modal-cancel" onclick="cerrarModal()">Cancelar</button>
+      <button id="modal-ok" onclick="confirmarRenombrar()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════
+// PWA INSTALACIÓN
+// ══════════════════════════════════════════════
+let deferredPrompt = null;
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();
+  deferredPrompt = e;
+  document.getElementById('btn-instalar').style.display = 'block';
+});
+window.addEventListener('appinstalled', () => {
+  document.getElementById('btn-instalar').style.display = 'none';
+  deferredPrompt = null;
+});
+function instalarApp() {
+  if (deferredPrompt) {
+    deferredPrompt.prompt();
+    deferredPrompt.userChoice.then(() => { deferredPrompt = null; });
+  } else {
+    alert('Para instalar:\n1. Toca los 3 puntos arriba en Chrome\n2. Toca "Agregar a pantalla de inicio"\n3. ¡Listo! Se instala como app sin barra de Chrome.');
+  }
+}
+
+// ══════════════════════════════════════════════
+// ESTADO
+// ══════════════════════════════════════════════
+let chatActual = null;
+let historial = {};   // { id: { nombre, mensajes:[] } }
+let renamingId = null;
+let enviando = false;
+
+const SALUDO = "¡Hola! Soy **Maxi**, tu asistente con acceso a internet 🌐\n\n¿En qué te puedo ayudar hoy? Puedo responder preguntas, escribir código, buscar información actualizada y mucho más.";
+
+// ══════════════════════════════════════════════
+// PERSISTENCIA
+// ══════════════════════════════════════════════
+function guardar() {
+  try { localStorage.setItem('maxi_v5', JSON.stringify(historial)); } catch(e){}
+}
+function cargar() {
+  try {
+    const d = localStorage.getItem('maxi_v5');
+    if (d) historial = JSON.parse(d);
+  } catch(e) { historial = {}; }
+}
+
+// ══════════════════════════════════════════════
+// CHATS
+// ══════════════════════════════════════════════
+function nuevoChat() {
+  const id = 'c' + Date.now();
+  historial[id] = { nombre: 'Nueva conversación', mensajes: [{ rol:'ai', texto: SALUDO }] };
+  guardar();
+  abrirChat(id);
+  renderSidebar();
+  cerrarSidebar();
+}
+
+function abrirChat(id) {
+  chatActual = id;
+  renderSidebar();
+  renderChat();
+}
+
+function renombrarChat(id) {
+  renamingId = id;
+  document.getElementById('modal-input').value = historial[id].nombre;
+  document.getElementById('modal-wrap').classList.add('show');
+  setTimeout(() => document.getElementById('modal-input').focus(), 100);
+}
+
+function confirmarRenombrar() {
+  const val = document.getElementById('modal-input').value.trim();
+  if (val && renamingId) {
+    historial[renamingId].nombre = val;
+    guardar(); renderSidebar();
+  }
+  cerrarModal();
+}
+
+function cerrarModal() {
+  document.getElementById('modal-wrap').classList.remove('show');
+  renamingId = null;
+}
+
+function borrarChat(id) {
+  delete historial[id];
+  guardar();
+  if (chatActual === id) {
+    const ids = Object.keys(historial);
+    if (ids.length > 0) abrirChat(ids[ids.length-1]);
+    else nuevoChat();
+  } else renderSidebar();
+}
+
+function borrarTodo() {
+  if (!confirm('¿Borrar todas las conversaciones?')) return;
+  historial = {};
+  guardar();
+  nuevoChat();
+}
+
+// ══════════════════════════════════════════════
+// RENDER SIDEBAR
+// ══════════════════════════════════════════════
+function renderSidebar() {
+  const lista = document.getElementById('lista-chats');
+  lista.innerHTML = '';
+  const ids = Object.keys(historial).reverse();
+  ids.forEach(id => {
+    const div = document.createElement('div');
+    div.className = 'item-chat' + (id === chatActual ? ' activo' : '');
+
+    const title = document.createElement('span');
+    title.className = 'chat-title';
+    title.textContent = historial[id].nombre;
+    title.onclick = () => { abrirChat(id); cerrarSidebar(); };
+
+    const actions = document.createElement('div');
+    actions.className = 'chat-actions';
+
+    const btnR = document.createElement('button');
+    btnR.textContent = '✏️';
+    btnR.title = 'Renombrar';
+    btnR.onclick = (e) => { e.stopPropagation(); renombrarChat(id); };
+
+    const btnD = document.createElement('button');
+    btnD.textContent = '🗑';
+    btnD.title = 'Borrar';
+    btnD.onclick = (e) => { e.stopPropagation(); borrarChat(id); };
+
+    actions.append(btnR, btnD);
+    div.append(title, actions);
+    lista.appendChild(div);
+  });
+}
+
+// ══════════════════════════════════════════════
+// RENDER CHAT
+// ══════════════════════════════════════════════
+function formatear(texto) {
+  if (!texto) return '';
+  let h = texto
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/```(\w*)\n?([\s\S]*?)```/g, (_,l,c) => `<pre><code>${c.trim()}</code></pre>`)
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    .replace(/\n/g, '<br>');
+  return h;
+}
+
+function renderChat() {
+  const box = document.getElementById('chat-box');
+  box.innerHTML = '';
+  if (!chatActual || !historial[chatActual]) return;
+  historial[chatActual].mensajes.forEach(m => {
+    const div = document.createElement('div');
+    div.className = 'msg ' + m.rol;
+    div.innerHTML = formatear(m.texto);
+    box.appendChild(div);
+  });
+  box.scrollTop = box.scrollHeight;
+}
+
+function addMsg(rol, texto) {
+  historial[chatActual].mensajes.push({ rol, texto });
+  guardar();
+  const box = document.getElementById('chat-box');
+  const div = document.createElement('div');
+  div.className = 'msg ' + rol;
+  div.innerHTML = formatear(texto);
+  box.appendChild(div);
+  box.scrollTop = box.scrollHeight;
+  return div;
+}
+
+function showTyping() {
+  const box = document.getElementById('chat-box');
+  const div = document.createElement('div');
+  div.className = 'msg ai typing';
+  div.id = 'typing-indicator';
+  div.innerHTML = '<div class="dot"></div><div class="dot"></div><div class="dot"></div>';
+  box.appendChild(div);
+  box.scrollTop = box.scrollHeight;
+}
+
+function hideTyping() {
+  const t = document.getElementById('typing-indicator');
+  if (t) t.remove();
+}
+
+// ══════════════════════════════════════════════
+// ENVIAR MENSAJE
+// ══════════════════════════════════════════════
+async function enviar() {
+  if (enviando) return;
+  const inp = document.getElementById('userInput');
+  const texto = inp.value.trim();
+  if (!texto) return;
+
+  inp.value = '';
+  inp.style.height = 'auto';
+  enviando = true;
+  document.getElementById('btn-enviar').disabled = true;
+
+  // Auto-nombrar chat con el primer mensaje
+  if (historial[chatActual].mensajes.length === 1) {
+    historial[chatActual].nombre = texto.slice(0, 40) + (texto.length > 40 ? '…' : '');
+    renderSidebar();
+  }
+
+  addMsg('user', texto);
+  showTyping();
+
+  // Construir historial para la API
+  const msgs = historial[chatActual].mensajes
+    .filter(m => m.rol !== 'ai' || m.texto !== SALUDO)
+    .map(m => ({ role: m.rol === 'user' ? 'user' : 'assistant', content: m.texto }));
+
+  // Agregar mensaje actual si no está ya
+  if (msgs[msgs.length-1]?.content !== texto) {
+    msgs.push({ role:'user', content: texto });
+  }
+
+  try {
+    // Intentar con Pollinations primero, si falla usar respaldo
+    let respuesta = null;
+
+    // API 1: Pollinations GET
+    try {
+      const prompt = encodeURIComponent('Eres Maxi, asistente en español. Responde útil y claro.\n\nUsuario: ' + texto);
+      const r1 = await fetch(`https://text.pollinations.ai/${prompt}`);
+      if (r1.ok) { const t = await r1.text(); if(t && t.length > 2) respuesta = t; }
+    } catch(e1) {}
+
+    // API 2: Pollinations con modelo mistral
+    if (!respuesta) {
+      try {
+        const r2 = await fetch('https://text.pollinations.ai/', {
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({
+            messages:[
+              {role:'system', content:'Eres Maxi, asistente en español. Responde siempre en español, de forma clara y útil.'},
+              ...msgs
+            ],
+            model:'mistral', stream:false
+          })
+        });
+        if (r2.ok) { const t = await r2.text(); if(t && t.length > 2) respuesta = t; }
+      } catch(e2) {}
+    }
+
+    // API 3: Pollinations con modelo openai
+    if (!respuesta) {
+      try {
+        const r3 = await fetch('https://text.pollinations.ai/', {
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({
+            messages:[
+              {role:'system', content:'Eres Maxi, asistente en español.'},
+              ...msgs
+            ],
+            model:'openai-fast', stream:false
+          })
+        });
+        if (r3.ok) { const t = await r3.text(); if(t && t.length > 2) respuesta = t; }
+      } catch(e3) {}
+    }
+
+    hideTyping();
+    addMsg('ai', respuesta || 'No obtuve respuesta, intenta de nuevo.');
+
+  } catch (err) {
+    hideTyping();
+    addMsg('ai', '⚠️ No pude conectarme a ninguna API.\n\n**Posibles causas:**\n- Sin conexión a internet\n- Red bloqueando peticiones externas\n\nIntenta con WiFi o datos móviles.\n\n`' + err.message + '`');
+  }
+
+  enviando = false;
+  document.getElementById('btn-enviar').disabled = false;
+  inp.focus();
+}
+
+// ══════════════════════════════════════════════
+// UTILIDADES UI
+// ══════════════════════════════════════════════
+function teclaEnter(e) {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviar(); }
+}
+
+function autoResize(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+}
+
+function toggleSidebar() {
+  document.getElementById('sidebar').classList.toggle('open');
+}
+function cerrarSidebar() {
+  document.getElementById('sidebar').classList.remove('open');
+}
+
+document.addEventListener('click', e => {
+  const sidebar = document.getElementById('sidebar');
+  if (window.innerWidth <= 600 && sidebar.classList.contains('open')) {
+    if (!sidebar.contains(e.target) && e.target.id !== 'btn-toggle') {
+      cerrarSidebar();
+    }
+  }
+  if (e.target === document.getElementById('modal-wrap')) cerrarModal();
+});
+
+document.getElementById('modal-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') confirmarRenombrar();
+  if (e.key === 'Escape') cerrarModal();
+});
+
+// ══════════════════════════════════════════════
+// INICIO
+// ══════════════════════════════════════════════
+cargar();
+if (Object.keys(historial).length === 0) {
+  nuevoChat();
+} else {
+  const ids = Object.keys(historial);
+  abrirChat(ids[ids.length - 1]);
+}
+</script>
+</body>
+</html>
