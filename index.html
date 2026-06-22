@@ -77,7 +77,6 @@ header {
 #btn-toggle:hover { color:#fff; }
 header h1 { font-size:17px; color:#4dadf7; flex:1; text-align:center; }
 
-/* Botones de cabecera */
 .header-btn {
   background:none; border:none; font-size:20px; cursor:pointer;
   padding:0 6px; transition: transform 0.2s;
@@ -145,6 +144,25 @@ textarea {
 .btn-imagen:active { transform:scale(0.95); }
 .btn-imagen:hover { filter:brightness(1.1); }
 
+/* Botón micrófono */
+.btn-microfono {
+  background:linear-gradient(135deg,#4A90D9,#06B6D4);
+  border:none; min-width:42px; height:42px;
+  border-radius:50%; cursor:pointer; color:#fff; font-size:18px;
+  display:flex; align-items:center; justify-content:center; flex-shrink:0;
+  transition: all 0.2s;
+}
+.btn-microfono:active { transform:scale(0.95); }
+.btn-microfono:hover { filter:brightness(1.1); }
+.btn-microfono.escuchando {
+  background:linear-gradient(135deg,#ff4444,#ff6666);
+  animation: parpadeo 0.5s infinite alternate;
+}
+@keyframes parpadeo {
+  0% { opacity: 0.7; transform: scale(1); }
+  100% { opacity: 1; transform: scale(1.05); }
+}
+
 #modal-wrap {
   position:fixed; inset:0; background:#000000bb;
   display:none; align-items:center; justify-content:center; z-index:1100;
@@ -206,7 +224,8 @@ textarea {
 
 <div class="input-area">
   <div class="input-box">
-    <textarea id="userInput" rows="1" placeholder="Escribe un mensaje, o pide una imagen (ej: 'quiero una foto de...')" onkeydown="teclaEnter(event)" oninput="autoResize(this)"></textarea>
+    <textarea id="userInput" rows="1" placeholder="Escribe un mensaje, dicta con el micrófono 🎤 o pide una imagen (ej: 'quiero una foto de...')" onkeydown="teclaEnter(event)" oninput="autoResize(this)"></textarea>
+    <button class="btn-microfono" id="btn-microfono" onclick="iniciarVoz()" title="Dictar por voz">🎤</button>
     <button class="btn-imagen" onclick="activarModoImagen()" title="Generar imagen (escribe tu descripción)">🎨</button>
     <button class="btn-enviar" id="btn-enviar" onclick="enviar()">➤</button>
   </div>
@@ -278,8 +297,8 @@ let chatActual = null;
 let historial = {};
 let renamingId = null;
 let enviando = false;
-let modoImagen = false; // para el botón 🎨
-const SALUDO = "¡Hola! Soy **Maxi**, tu asistente experto en programación 💻\n\nPuedes pedirme imágenes escribiendo *'quiero una imagen de...'* o usando el botón 🎨.";
+let modoImagen = false;
+const SALUDO = "¡Hola! Soy **Maxi**, tu asistente experto en programación 💻\n\nPuedes pedirme imágenes escribiendo *'quiero una imagen de...'* o usando el botón 🎨. También puedes dictar con el micrófono 🎤.";
 
 // === PERSISTENCIA ===
 function guardar() {
@@ -463,21 +482,112 @@ function activarModoImagen() {
   const input = document.getElementById('userInput');
   input.focus();
   input.value = '🎨 Genera una imagen de ';
-  // Posicionar cursor al final
   input.setSelectionRange(input.value.length, input.value.length);
   modoImagen = true;
+}
+
+// === RECONOCIMIENTO DE VOZ (MICRÓFONO) ===
+let reconocimiento = null;
+let escuchando = false;
+
+function iniciarVoz() {
+  const btn = document.getElementById('btn-microfono');
+  // Si ya está escuchando, detener
+  if (escuchando && reconocimiento) {
+    reconocimiento.stop();
+    escuchando = false;
+    btn.classList.remove('escuchando');
+    btn.textContent = '🎤';
+    return;
+  }
+
+  // Verificar soporte
+  if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+    alert('Tu navegador no soporta reconocimiento de voz. Prueba con Chrome o Edge.');
+    return;
+  }
+
+  // Crear instancia
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  reconocimiento = new SR();
+  reconocimiento.lang = 'es-ES';
+  reconocimiento.continuous = false;
+  reconocimiento.interimResults = true;
+  reconocimiento.maxAlternatives = 1;
+
+  // Eventos
+  reconocimiento.onstart = () => {
+    escuchando = true;
+    btn.classList.add('escuchando');
+    btn.textContent = '⏹️';
+    const input = document.getElementById('userInput');
+    input.placeholder = '🎤 Escuchando...';
+  };
+
+  reconocimiento.onresult = (event) => {
+    const input = document.getElementById('userInput');
+    let final = '';
+    let interim = '';
+    for (let i = event.resultIndex; i < event.results.length; i++) {
+      if (event.results[i].isFinal) {
+        final += event.results[i][0].transcript;
+      } else {
+        interim += event.results[i][0].transcript;
+      }
+    }
+    if (final) {
+      input.value = final;
+      modoImagen = false; // si dicta, no forzamos imagen
+    } else if (interim) {
+      input.value = interim;
+    }
+    input.dispatchEvent(new Event('input')); // para auto-resize
+  };
+
+  reconocimiento.onerror = (event) => {
+    console.warn('Error de voz:', event.error);
+    detenerVoz();
+    if (event.error === 'not-allowed') {
+      alert('Permite el acceso al micrófono para usar voz.');
+    } else if (event.error === 'no-speech') {
+      // No hacer nada, solo detener
+    }
+  };
+
+  reconocimiento.onend = () => {
+    detenerVoz();
+  };
+
+  reconocimiento.start();
+}
+
+function detenerVoz() {
+  const btn = document.getElementById('btn-microfono');
+  escuchando = false;
+  btn.classList.remove('escuchando');
+  btn.textContent = '🎤';
+  const input = document.getElementById('userInput');
+  if (input.placeholder === '🎤 Escuchando...') {
+    input.placeholder = 'Escribe un mensaje, dicta con el micrófono 🎤 o pide una imagen (ej: "quiero una foto de...")';
+  }
+  if (reconocimiento) {
+    try { reconocimiento.abort(); } catch(e) {}
+    reconocimiento = null;
+  }
 }
 
 // === ENVIAR ===
 async function enviar() {
   if (enviando) return;
+  // Si el micrófono está activo, detenerlo
+  if (escuchando) detenerVoz();
+
   const inp = document.getElementById('userInput');
   let texto = inp.value.trim();
   if (!texto) return;
 
-  // Si se activó el modo imagen con el botón, forzamos generación de imagen
   let esImagen = modoImagen || detectarGeneracionImagen(texto);
-  modoImagen = false; // reset
+  modoImagen = false;
 
   inp.value = '';
   inp.style.height = 'auto';
@@ -504,26 +614,22 @@ async function enviar() {
 
   addMsg('user', texto);
 
-  // === GENERAR IMAGEN SI CORRESPONDE ===
   if (esImagen) {
     showTyping();
     const imageUrl = await generarImagen(texto);
     const indicator = document.getElementById('typing-indicator');
     if (indicator) indicator.remove();
-    
     if (imageUrl) {
       addImageMsg('ai', imageUrl, texto);
     } else {
       addMsg('ai', '❌ No pude generar la imagen. Intenta con otra descripción.');
     }
-    
     enviando = false;
     document.getElementById('btn-enviar').disabled = false;
     inp.focus();
     return;
   }
 
-  // === SI NO ES IMAGEN, RESPONDE CON TEXTO ===
   showTyping();
   const msgs = [
     { role: 'system', content: 'Eres Maxi, una IA experta en programación y desarrollo web. Responde de forma clara, directa y en español.' }
@@ -597,4 +703,4 @@ if (Object.keys(historial).length === 0) {
 }
 </script>
 </body>
-    </html>
+</html>
