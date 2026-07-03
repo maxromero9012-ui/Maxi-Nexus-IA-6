@@ -8,7 +8,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Maxi IA">
 <meta name="theme-color" content="#121212">
-<link rel="manifest" href="manifest.json">
+<link rel="manifest" href="./manifest.json">
 <title>Maxi IA</title>
 <style>
 * { box-sizing:border-box; margin:0; padding:0; font-family:'Segoe UI',sans-serif; }
@@ -16,7 +16,6 @@ body { background:#121212; color:#ececec; height:100vh; overflow:hidden; }
 
 #app-wrapper { display:flex; height:100vh; overflow:hidden; }
 
-/* ── SIDEBAR ── */
 #sidebar {
   width:0; overflow:hidden; flex-shrink:0; background:#1a1a1a;
   border-right:1px solid #2a2a2a; transition: width 0.3s ease;
@@ -63,12 +62,10 @@ body { background:#121212; color:#ececec; height:100vh; overflow:hidden; }
 }
 #sidebar .btn-borrar-todo:active { background:#2a0000; }
 
-/* ── MAIN ── */
 #main {
   flex:1; display:flex; flex-direction:column; min-width:0; overflow:hidden;
 }
 
-/* HEADER - VERSIÓN ULTRA ROBUSTA */
 header {
   background:#1a1a1a;
   padding: 10px 12px !important;
@@ -151,7 +148,6 @@ header h1 {
 .dot:nth-child(3) { animation-delay:0.4s; }
 @keyframes bounce { 0%,60%,100%{transform:translateY(0)} 30%{transform:translateY(-8px)} }
 
-/* ── INPUT AREA ── */
 .input-area {
   position:fixed; bottom:0; left:0; right:0;
   padding:8px 10px 10px 10px;
@@ -225,7 +221,6 @@ textarea {
 #modal-cancel { background:#333; color:#aaa; }
 #modal-ok { background:#4dadf7; color:#000; font-weight:bold; }
 
-/* ── RESPONSIVE ── */
 @media (max-width:600px) {
   #sidebar.open { width:85%; max-width:300px; }
   header { padding:6px 8px !important; min-height:48px !important; gap:4px !important; }
@@ -240,7 +235,6 @@ textarea {
   .msg { font-size:13px; padding:10px 12px; }
 }
 
-/* ── ESTILOS PWA ULTRA ROBUSTOS ── */
 @media all and (display-mode: standalone) {
   header {
     padding: 10px 12px !important;
@@ -284,7 +278,7 @@ textarea {
 </head>
 <body>
 
-<!-- SPLASH SCREEN -->
+<!-- SPLASH -->
 <div id="splash" style="position:fixed;inset:0;z-index:9999;background:linear-gradient(135deg,#0f0c29,#302b63,#24243e);display:flex;flex-direction:column;align-items:center;justify-content:center;transition:opacity 0.5s;">
   <canvas id="splash-icon" width="120" height="120" style="border-radius:24px;margin-bottom:20px;box-shadow:0 0 40px #8B5CF688;"></canvas>
   <div style="color:#fff;font-size:28px;font-weight:bold;letter-spacing:4px;">MAXI IA</div>
@@ -297,9 +291,8 @@ textarea {
   <style>@keyframes pulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.4);opacity:0.5}}</style>
 </div>
 
-<!-- APP WRAPPER -->
+<!-- APP -->
 <div id="app-wrapper">
-  <!-- SIDEBAR -->
   <div id="sidebar">
     <button class="btn-nuevo" onclick="nuevoChat(); cerrarSidebar();">＋ Nuevo Chat</button>
     <button id="btn-instalar" onclick="instalarApp()" style="display:none;background:linear-gradient(135deg,#4A90D9,#8B5CF6);color:#fff;border:none;padding:11px;border-radius:8px;font-size:13px;cursor:pointer;font-weight:bold;letter-spacing:1px;">📲 Instalar App</button>
@@ -307,29 +300,28 @@ textarea {
     <button class="btn-borrar-todo" onclick="borrarTodo()">🗑 Borrar todo</button>
   </div>
 
-  <!-- MAIN (CHAT) -->
   <div id="main" onclick="cerrarSidebar()">
     <header>
       <button id="btn-toggle" onclick="event.stopPropagation(); toggleSidebar();">☰</button>
       <h1>✦ Maxi IA</h1>
-      <button class="header-btn" id="btn-borrar-todo-header" onclick="borrarTodo()" title="Borrar todas las conversaciones">🗑❌</button>
-      <button class="header-btn" id="btn-borrar-actual" onclick="borrarChat(chatActual)" title="Borrar esta conversación">🗑</button>
+      <button class="header-btn" id="btn-borrar-todo-header" onclick="borrarTodo()" title="Borrar todas">🗑❌</button>
+      <button class="header-btn" id="btn-borrar-actual" onclick="borrarChat(chatActual)" title="Borrar esta">🗑</button>
     </header>
     <div id="chat-box"></div>
   </div>
 </div>
 
-<!-- INPUT AREA -->
+<!-- INPUT -->
 <div class="input-area">
   <div class="input-box">
     <textarea id="userInput" rows="1" placeholder="Escribe, dicta 🎤 o pide imagen 🎨..." onkeydown="teclaEnter(event)" oninput="autoResize(this)"></textarea>
-    <button class="btn-microfono" id="btn-microfono" onclick="iniciarVoz()" title="Dictar por voz">🎤</button>
-    <button class="btn-imagen" onclick="activarModoImagen()" title="Generar imagen (escribe descripción)">🎨</button>
+    <button class="btn-microfono" id="btn-microfono" onclick="iniciarVoz()" title="Dictar">🎤</button>
+    <button class="btn-imagen" onclick="activarModoImagen()" title="Imagen">🎨</button>
     <button class="btn-enviar" id="btn-enviar" onclick="enviar()">➤</button>
   </div>
 </div>
 
-<!-- MODAL RENOMBRAR -->
+<!-- MODAL -->
 <div id="modal-wrap">
   <div id="modal">
     <h3>Renombrar conversación</h3>
@@ -350,7 +342,15 @@ window.addEventListener('DOMContentLoaded', () => {
   g.addColorStop(0,'#4A90D9'); g.addColorStop(0.5,'#8B5CF6'); g.addColorStop(1,'#06B6D4');
   ctx.fillStyle = g;
   ctx.beginPath();
-  ctx.roundRect(0,0,120,120,22);
+  ctx.moveTo(22,0);
+  ctx.quadraticCurveTo(0,0,0,22);
+  ctx.lineTo(0,98);
+  ctx.quadraticCurveTo(0,120,22,120);
+  ctx.lineTo(98,120);
+  ctx.quadraticCurveTo(120,120,120,98);
+  ctx.lineTo(120,22);
+  ctx.quadraticCurveTo(120,0,98,0);
+  ctx.closePath();
   ctx.fill();
   ctx.fillStyle='#fff';
   ctx.font='bold 68px Segoe UI';
@@ -364,13 +364,8 @@ window.addEventListener('DOMContentLoaded', () => {
   },1500);
 });
 
-// === SERVICE WORKER ===
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js').catch(()=>{});
-  });
-}
-
+navigator.serviceWorker.register('./sw.js');
+  
 // === PWA INSTALACIÓN ===
 let deferredPrompt = null;
 window.addEventListener('beforeinstallprompt', e => {
